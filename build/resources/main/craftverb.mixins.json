@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.fg83.craftverb.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

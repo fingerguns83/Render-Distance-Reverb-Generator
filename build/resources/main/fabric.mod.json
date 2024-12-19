@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "craftverb",
+  "version": "1.0-ALPHA-0001",
+  "name": "Craft Verb",
+  "description": "",
+  "authors": [
+    "fingerguns83"
+  ],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/craftverb/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "client": [
+      "net.fg83.craftverb.client.CraftverbClient"
+    ],
+    "main": [
+      "net.fg83.craftverb.Craftverb"
+    ]
+  },
+  "mixins": [
+    "craftverb.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.9",
+    "fabric": "*",
+    "minecraft": "1.21.4"
+  }
+}
