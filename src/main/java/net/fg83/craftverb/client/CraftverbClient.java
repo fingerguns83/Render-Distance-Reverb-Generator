@@ -17,6 +17,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.Entity;
+import net.minecraft.text.Text;
 import net.minecraft.util.math.Vec3d;
 import org.lwjgl.glfw.GLFW;
 
@@ -56,6 +57,8 @@ public class CraftverbClient implements ClientModInitializer {
 
             if (isIPressed) {
                 if (!isKeyPressed) {
+                    client.player.sendMessage(Text.of("Grab some coffee, this is going to take a while."), false);
+                    client.player.sendMessage(Text.of("Starting acoustic trace..."), false);
                     processRay(client);
                     isKeyPressed = true;
                 }
@@ -67,34 +70,36 @@ public class CraftverbClient implements ClientModInitializer {
     }
 
     private void processRay(MinecraftClient client) {
+        assert client.player != null;
+
         Entity camera = client.cameraEntity;
 
         if (camera == null) {
             return;
         }
-
+        int rayNumber = 0;
         System.out.println("Starting trace...");
-        for (float pitch = -90; pitch <= 90; pitch += 1) {
-            if (Math.abs(pitch) % 90 == 0) {
-                continue;
-            }
-            for (float yaw = -180; yaw <= 180; yaw += 1) {
-                if (Math.abs(yaw) % 90 == 0) {
-                    continue;
-                }
+        for (float pitch = -90.0F; pitch <= 90.0F; pitch += 0.1F) {
+            for (float yaw = -180.0F; yaw <= 180.0F; yaw += 0.1F) {
 
                 Vec3d startPos = camera.getEyePos();
                 Vec3d currentDir = camera.getRotationVector(pitch, yaw); // Modify yaw/pitch here
-                //System.out.println("Running ray (Pitch: " + pitch + ", Yaw: " + yaw + ")");
 
                 Ray ray = new Ray(startPos, currentDir, camera);
                 ray.trace();
                 addEnergyToIR(ray.getDelayTime(), ray.getEnergy());
+                if (rayNumber % 64800 == 0){
+
+                    String progress = String.valueOf((((Math.round((double) rayNumber * 1000) / 1000) / 64800000) * 100));
+                    int length = Math.min(progress.length(), 4);
+                    //client.player.sendMessage(Text.of(progress.substring(0, length) + "%"), false);
+                    System.out.println(progress.substring(0, length) + "%");
+                }
+                rayNumber++;
             }
         }
         System.out.println("Trace complete");
         System.out.println("Generating IR...");
-        //AudioUtils.simpleExport(irMatrix);
         generateIR();
     }
 
@@ -107,28 +112,39 @@ public class CraftverbClient implements ClientModInitializer {
             irBands.put(frequencyBand, AudioUtils.createAudioEventFromSamples(min, new float[sampleLength]));
         }
 
+
         irBands.forEach((frequencyBand, audioEvent) -> {
-            if (frequencyBand == 125) {
-                audioEvent.setFloatBuffer(AudioUtils.applyHighpassFilter(audioEvent, 125, AudioUtils.SAMPLE_RATE));
-            }
-            else if (frequencyBand == 4000){
-                audioEvent.setFloatBuffer(AudioUtils.applyLowpassFilter(audioEvent, 4000, AudioUtils.SAMPLE_RATE));
-
-            }
-            else {
-                int freqMax = frequencyBand * 2;
-                int freqMin = frequencyBand / 2;
-                double centerFreq = (double) (freqMax + freqMin) / 2;
-                double bandwidth = freqMax - freqMin;
-                audioEvent.setFloatBuffer(AudioUtils.applyBandpassFilter(audioEvent, centerFreq, bandwidth, AudioUtils.SAMPLE_RATE));
-            }
-
             AudioUtils.applyAttenuation(audioEvent, irMatrix, frequencyBand);
-            AudioUtils.writeWavFile("finalIR" + frequencyBand + ".wav", audioEvent);
+
+            switch (frequencyBand){
+                case 125:
+                    AudioUtils.applyLowpassFilter(audioEvent, 125, AudioUtils.SAMPLE_RATE);
+                    break;
+                case 250:
+                    AudioUtils.applyLowpassFilter(audioEvent, 250, AudioUtils.SAMPLE_RATE);
+                    AudioUtils.applyHighpassFilter(audioEvent, 125, AudioUtils.SAMPLE_RATE);
+                    break;
+                case 2000:
+                    AudioUtils.applyHighpassFilter(audioEvent, 2000, AudioUtils.SAMPLE_RATE);
+                    AudioUtils.applyLowpassFilter(audioEvent, 4000, AudioUtils.SAMPLE_RATE);
+                    break;
+                case 4000:
+                    AudioUtils.applyHighpassFilter(audioEvent, 4000, AudioUtils.SAMPLE_RATE);
+                    break;
+                default:
+                    int freqMax = frequencyBand * 2;
+                    int freqMin = frequencyBand / 2;
+                    double centerFreq = (double) (freqMax + freqMin) / 2;
+                    double bandwidth = freqMax - freqMin;
+                    AudioUtils.applyBandpassFilter(audioEvent, centerFreq, bandwidth, AudioUtils.SAMPLE_RATE);
+            }
         });
+        AudioEvent combinedIR = AudioUtils.combineBands(irBands);
+        AudioUtils.cleanupIR(combinedIR);
+
         System.out.println("IR generated");
         System.out.println("Writing WAV file");
-        //AudioUtils.writeWavFile("finalIR.wav", AudioUtils.combineBands(irBands));
+        AudioUtils.writeWavFile("finalIR.wav", combinedIR);
     }
 
     private void addEnergyToIR(double delayTime, Map<Integer, Double> newEnergy){

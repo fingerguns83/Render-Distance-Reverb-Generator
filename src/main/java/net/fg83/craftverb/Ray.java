@@ -3,10 +3,7 @@ package net.fg83.craftverb;
 import net.fg83.craftverb.client.CraftverbClient;
 import net.minecraft.block.BlockState;
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.projectile.thrown.SnowballEntity;
-import net.minecraft.item.ItemStack;
 import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
@@ -23,15 +20,16 @@ public class Ray {
     private final Vec3d startPos;
     private Vec3d currentPos;
     private Vec3d currentDir;
-    private Entity castEntity;
+    private final Entity castEntity;
     private boolean traced = false;
-    private AtomicBoolean tracing = new AtomicBoolean(false);
+    private final AtomicBoolean tracing = new AtomicBoolean(false);
 
-    private Map<Integer, Double> energy;  // Map frequency (Hz) to energy
+    private final Map<Integer, Double> energy;  // Map frequency (Hz) to energy
     private double totalDistance = 0;  // Total distance the ray has traveled
 
     // Constants for frequency bands (fixed for your 6 bands)
     public static final int[] FREQUENCY_BANDS = {125, 250, 500, 1000, 2000, 4000};
+    public final int MAX_DISTANCE = 512;
 
     // Constructor to initialize ray with energy values for each frequency band
     public Ray(Vec3d pos, Vec3d dir, Entity castEntity) {
@@ -48,8 +46,8 @@ public class Ray {
 
     public void trace(){
         tracing.set(true);
-        while (totalDistance < 1700) {
-            HitResult hitResult = performRaycast(currentPos, currentDir, 128 - (totalDistance / 2), castEntity);
+        while (totalDistance < MAX_DISTANCE) {
+            HitResult hitResult = performRaycast(currentPos, currentDir, (MAX_DISTANCE - totalDistance) / 2, castEntity);
 
             if (totalDistance > 1 && VectorUtils.doesVectorPassThroughPoint(currentPos, castEntity.getEyePos(), currentDir, 1)){
                 totalDistance += currentPos.distanceTo(castEntity.getEyePos());
@@ -75,7 +73,6 @@ public class Ray {
                 String coefficientKey = fetchCoefficientKey(blockState.getBlock().toString());
                 List<AbsorptionCoefficient> absorptionCoefficients = getAbsorptionCoefficients(coefficientKey);
                 if (absorptionCoefficients == null){
-                    System.out.println("Missing absorption coefficients for: " + coefficientKey);
                     break;
                 }
 
@@ -125,18 +122,12 @@ public class Ray {
 
         AtomicInteger edgeCount = new AtomicInteger();
         integerBlockBounds.forEach(edgeCount::addAndGet);
-        if (edgeCount.get() > 1) {
-            return true;
-        }
-        else {
-            return false;
-        }
+        return edgeCount.get() > 1;
     }
 
     private String fetchCoefficientKey(String blockNameRaw){
         String blockName = blockNameRaw.replace("Block{", "").replace("}", "");
-        String coefficientKey = CraftverbClient.blockCoefficientKeys.get(blockName);
-        return coefficientKey;
+        return CraftverbClient.blockCoefficientKeys.get(blockName);
     }
 
     private List<AbsorptionCoefficient> getAbsorptionCoefficients(String key){
@@ -149,8 +140,7 @@ public class Ray {
             double coef = absorptionCoefficient.getCoefficient();
             double current = energy.get(freq);
             //if (current > 0){
-                double newLevel = current - (castDistance * (current * coef));
-            //    newLevel = (newLevel < 0) ? 0 : newLevel;
+                double newLevel = current * (Math.pow((1 - coef), castDistance));
                 energy.put(freq, newLevel);
             //}
         });
@@ -161,7 +151,7 @@ public class Ray {
             double coef = coefficient.getCoefficient();
             double current = energy.get(freq);
             //if (current > 0){
-                double newLevel = current - (current * coef);
+                double newLevel = current * (1 - coef);
               //  newLevel = (newLevel < 0) ? 0 : newLevel;
                 energy.put(freq, newLevel);
             //}
