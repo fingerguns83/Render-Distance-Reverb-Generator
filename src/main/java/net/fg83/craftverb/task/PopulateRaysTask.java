@@ -37,6 +37,13 @@ public class PopulateRaysTask implements Runnable{
         try {
             client.player.sendMessage(Text.of("Running acoustic simulation..."), false);
             for (float pitch = -90.0F; pitch <= 90.0F; pitch += 0.1F) {
+                while(craftverbClient.rayPool.hasQueuedSubmissions()){
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
                 for (float yaw = -180.0F; yaw <= 180.0F; yaw += 0.1F) {
                     Vec3d currentDir = camera.getRotationVector(pitch, yaw); // Modify yaw/pitch here
                     craftverbClient.rayPool.submit(() -> new CastRayTask(new Ray(startPos, currentDir, camera), client, craftverbClient).run());

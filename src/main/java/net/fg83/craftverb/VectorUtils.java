@@ -228,4 +228,76 @@ public class VectorUtils {
     }
 
 
+    public static Vec3d generateRandomHemisphereDirection(Vec3d normal, Random random) {
+        // Generate a random direction in the +z hemisphere
+        double theta = 2 * Math.PI * random.nextDouble(); // Azimuth
+        double phi = Math.acos(random.nextDouble()); // Elevation
+
+        double x = Math.sin(phi) * Math.cos(theta);
+        double y = Math.sin(phi) * Math.sin(theta);
+        double z = Math.cos(phi);
+
+        Vec3d localDirection = new Vec3d(x, y, z);
+
+        // Align the local hemisphere with the given normal
+        return alignWithNormal(localDirection, normal);
+    }
+
+    public static Vec3d generateRandomQuarterSphereDirection(Vec3d normal, Random random) {
+        // Generate a random direction within the quarter-sphere
+        double theta = Math.PI / 2 * random.nextDouble(); // Restrict azimuth to a quarter
+        double phi = Math.acos(random.nextDouble()); // Elevation
+
+        double x = Math.sin(phi) * Math.cos(theta);
+        double y = Math.sin(phi) * Math.sin(theta);
+        double z = Math.cos(phi);
+
+        Vec3d localDirection = new Vec3d(x, y, z);
+
+        // Align the local quarter-sphere with the given normal
+        return alignWithNormal(localDirection, normal);
+    }
+
+    public static Vec3d generateRandomEighthSphereDirection(Vec3d normal, Random random) {
+        // Generate a random direction within the eighth-sphere
+        double theta = Math.PI / 4 * random.nextDouble(); // Restrict azimuth to an eighth
+        double phi = Math.acos(random.nextDouble()); // Elevation
+
+        double x = Math.sin(phi) * Math.cos(theta);
+        double y = Math.sin(phi) * Math.sin(theta);
+        double z = Math.cos(phi);
+
+        Vec3d localDirection = new Vec3d(x, y, z);
+
+        // Align the local eighth-sphere with the given normal
+        return alignWithNormal(localDirection, normal);
+    }
+
+    private static Vec3d alignWithNormal(Vec3d localDirection, Vec3d normal) {
+        Vec3d up = new Vec3d(0, 0, 1); // Default "up" vector
+
+        // If the normal is aligned with the +z axis, return the local direction as-is
+        if (normal.equals(up)) {
+            return localDirection;
+        }
+
+        // Calculate rotation axis and angle
+        Vec3d rotationAxis = up.crossProduct(normal).normalize();
+        double angle = Math.acos(up.dotProduct(normal));
+
+        // Rotate the local direction to align with the normal
+        return rotateVector(localDirection, rotationAxis, angle);
+    }
+
+    private static Vec3d rotateVector(Vec3d vec, Vec3d axis, double angle) {
+        // Rodrigues' rotation formula
+        double cosTheta = Math.cos(angle);
+        double sinTheta = Math.sin(angle);
+
+        return vec.multiply(cosTheta)
+                .add(axis.crossProduct(vec).multiply(sinTheta))
+                .add(axis.multiply(axis.dotProduct(vec) * (1 - cosTheta)));
+    }
+
+
 }

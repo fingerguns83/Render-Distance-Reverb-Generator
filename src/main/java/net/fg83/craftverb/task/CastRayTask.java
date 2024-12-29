@@ -29,8 +29,10 @@ public class CastRayTask implements Runnable{
             System.out.println("Ray is null");
             return;
         }
-        ray.trace();
-        craftverbClient.tracedRayQueue.add(ray);
+        ray.trace(craftverbClient, client);
+        if (ray.didHitTarget()){
+            craftverbClient.tracedRayQueue.add(ray);
+        }
     }
 
 }
