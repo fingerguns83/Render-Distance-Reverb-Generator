@@ -1,6 +1,16 @@
 package net.fg83.craftverb;
 
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class VectorUtils {
 
@@ -45,11 +55,177 @@ public class VectorUtils {
         return false; // No consistent t found
     }
 
-    public static boolean isPointOnEdge(Vec3d collisionPos){
+    public static SurfaceType isPointOnEdge(Vec3d collisionPos){
         int integerValues = 0;
-        if (collisionPos.x % 1 == 0) integerValues++;
-        if (collisionPos.y % 1 == 0) integerValues++;
-        if (collisionPos.z % 1 == 0) integerValues++;
-        return integerValues > 1;
+        if (isInteger(collisionPos.x)) integerValues++;
+        if (isInteger(collisionPos.y)) integerValues++;
+        if (isInteger(collisionPos.z)) integerValues++;
+        if (integerValues == 1){
+            return SurfaceType.FLAT;
+        }
+        if (integerValues == 2){
+            return SurfaceType.SEAM;
+        }
+        if (integerValues == 3){
+            return SurfaceType.CORNER;
+        }
+        return null;
     }
+
+    public static List<BlockPos> getSharedBlocks(BlockHitResult blockHitResult, @Nullable Vec3d correctedHitPos){
+        List<BlockPos> sharedBlocks = new ArrayList<>();
+        Vec3d hitPos;
+
+        if (correctedHitPos != null){
+            hitPos = correctedHitPos;
+        }
+        else {
+             hitPos = blockHitResult.getPos();
+        }
+
+        double x = hitPos.x;
+        double y = hitPos.y;
+        double z = hitPos.z;
+
+        // Check which coordinates are integers
+        boolean isXInt = isInteger(x);
+        boolean isYInt = isInteger(y);
+        boolean isZInt = isInteger(z);
+
+        SurfaceType unspecificSurfaceType = isPointOnEdge(hitPos);
+
+        BlockPos hitBlockPos = blockHitResult.getBlockPos();
+        sharedBlocks.add(hitBlockPos);
+
+        if (unspecificSurfaceType == SurfaceType.CORNER || unspecificSurfaceType == SurfaceType.SEAM){
+            List<Direction> offsets = new ArrayList<>();
+
+            if (isXInt && Math.round(x) == hitBlockPos.getX())      {offsets.add(Direction.WEST);}
+            else if (isXInt && Math.round(x) == hitBlockPos.getX() + 1)  {offsets.add(Direction.EAST);}
+
+            if (isYInt && Math.round(y) == hitBlockPos.getZ())      {offsets.add(Direction.NORTH);}
+            else if (isYInt && Math.round(y) == hitBlockPos.getZ() + 1)  {offsets.add(Direction.SOUTH);}
+
+            if (isZInt && Math.round(z) == hitBlockPos.getY())      {offsets.add(Direction.DOWN);}
+            else if (isZInt && Math.round(z) == hitBlockPos.getY() + 1)  {offsets.add(Direction.UP);}
+
+
+
+            if (offsets.size() == 2){
+                sharedBlocks.add(hitBlockPos.offset(offsets.get(0)).offset(offsets.get(1)));
+            }
+            else if (offsets.size() == 3){
+                sharedBlocks.add(hitBlockPos.offset(offsets.get(0)).offset(offsets.get(1)));
+                sharedBlocks.add(hitBlockPos.offset(offsets.get(0)).offset(offsets.get(1)).offset(offsets.get(2)));
+            }
+            else {
+                throw new RuntimeException("Something went wrong with seam/corner calculation. Expected 2 or 3 offsets, got " + offsets.size() + " instead.");
+            }
+        }
+
+        return sharedBlocks;
+    }
+
+    public static Vec3d getSummedNormal(BlockHitResult blockHitResult, List<BlockPos> sharedBlocks, World world){
+        Vec3d summedNormal = new Vec3d(blockHitResult.getSide().getUnitVector().normalize());;
+
+        if (sharedBlocks.size() == 1){
+            return summedNormal;
+        }
+        else if (sharedBlocks.size() == 2){
+            if (world.getBlockState(sharedBlocks.get(1)).isAir()) {
+                //System.out.println("Hit false seam at " + blockHitResult.getPos().x + ", " + blockHitResult.getPos().y + ", " + blockHitResult.getPos().z);
+                return summedNormal;
+            }
+
+            //System.out.println("Hit seam at " + blockHitResult.getPos().x + ", " + blockHitResult.getPos().y + ", " + blockHitResult.getPos().z);
+
+            if (sharedBlocks.get(1).getX() < blockHitResult.getBlockPos().getX()){
+                summedNormal.add(new Vec3d(Direction.EAST.getUnitVector().normalize()));
+            }
+            else if (sharedBlocks.get(1).getX() > blockHitResult.getBlockPos().getX()){
+                summedNormal.add(new Vec3d(Direction.WEST.getUnitVector().normalize()));
+            }
+            else if (sharedBlocks.get(1).getY() < blockHitResult.getBlockPos().getY()){
+                summedNormal.add(new Vec3d(Direction.UP.getUnitVector().normalize()));
+            }
+            else if (sharedBlocks.get(1).getY() > blockHitResult.getBlockPos().getY()){
+                summedNormal.add(new Vec3d(Direction.DOWN.getUnitVector().normalize()));
+            }
+            else if (sharedBlocks.get(1).getZ() < blockHitResult.getBlockPos().getZ()){
+                summedNormal.add(new Vec3d(Direction.NORTH.getUnitVector().normalize()));
+            }
+            else if (sharedBlocks.get(1).getZ() > blockHitResult.getBlockPos().getZ()) {
+                summedNormal.add(new Vec3d(Direction.SOUTH.getUnitVector().normalize()));
+            }
+            else {
+                return summedNormal;
+            }
+        }
+        else if (sharedBlocks.size() == 3){
+            if (world.getBlockState(sharedBlocks.get(1)).isAir() && world.getBlockState(sharedBlocks.get(2)).isAir()) {
+                //System.out.println("Hit convex corner at " + blockHitResult.getPos().x + ", " + blockHitResult.getPos().y + ", " + blockHitResult.getPos().z);
+                return summedNormal;
+            }
+            if (!world.getBlockState(sharedBlocks.get(1)).isAir() && !world.getBlockState(sharedBlocks.get(2)).isAir()){
+                //System.out.println("Hit concave corner at " + blockHitResult.getPos().x + ", " + blockHitResult.getPos().y + ", " + blockHitResult.getPos().z);
+            }
+            if (!world.getBlockState(sharedBlocks.get(1)).isAir() || !world.getBlockState(sharedBlocks.get(2)).isAir()){
+                //System.out.println("Hit seam corner at " + blockHitResult.getPos().x + ", " + blockHitResult.getPos().y + ", " + blockHitResult.getPos().z);
+            }
+
+            if (!world.getBlockState(sharedBlocks.get(1)).isAir()){
+                if (sharedBlocks.get(1).getX() < blockHitResult.getBlockPos().getX()){
+                    summedNormal.add(new Vec3d(Direction.EAST.getUnitVector().normalize()));
+                }
+                else if (sharedBlocks.get(1).getX() > blockHitResult.getBlockPos().getX()){
+                    summedNormal.add(new Vec3d(Direction.WEST.getUnitVector().normalize()));
+                }
+                else if (sharedBlocks.get(1).getY() < blockHitResult.getBlockPos().getY()){
+                    summedNormal.add(new Vec3d(Direction.UP.getUnitVector().normalize()));
+                }
+                else if (sharedBlocks.get(1).getY() > blockHitResult.getBlockPos().getY()){
+                    summedNormal.add(new Vec3d(Direction.DOWN.getUnitVector().normalize()));
+                }
+                else if (sharedBlocks.get(1).getZ() < blockHitResult.getBlockPos().getZ()){
+                    summedNormal.add(new Vec3d(Direction.NORTH.getUnitVector().normalize()));
+                }
+                else if (sharedBlocks.get(1).getZ() > blockHitResult.getBlockPos().getZ()) {
+                    summedNormal.add(new Vec3d(Direction.SOUTH.getUnitVector().normalize()));
+                }
+            }
+            if (!world.getBlockState(sharedBlocks.get(2)).isAir()){
+                if (sharedBlocks.get(2).getX() < blockHitResult.getBlockPos().getX()){
+                    summedNormal.add(new Vec3d(Direction.EAST.getUnitVector().normalize()));
+                }
+                else if (sharedBlocks.get(2).getX() > blockHitResult.getBlockPos().getX()){
+                    summedNormal.add(new Vec3d(Direction.WEST.getUnitVector().normalize()));
+                }
+                else if (sharedBlocks.get(2).getY() < blockHitResult.getBlockPos().getY()){
+                    summedNormal.add(new Vec3d(Direction.UP.getUnitVector().normalize()));
+                }
+                else if (sharedBlocks.get(2).getY() > blockHitResult.getBlockPos().getY()){
+                    summedNormal.add(new Vec3d(Direction.DOWN.getUnitVector().normalize()));
+                }
+                else if (sharedBlocks.get(2).getZ() < blockHitResult.getBlockPos().getZ()){
+                    summedNormal.add(new Vec3d(Direction.NORTH.getUnitVector().normalize()));
+                }
+                else if (sharedBlocks.get(2).getZ() > blockHitResult.getBlockPos().getZ()) {
+                    summedNormal.add(new Vec3d(Direction.SOUTH.getUnitVector().normalize()));
+                }
+            }
+
+        }
+        else {
+            throw new RuntimeException("Something went wrong with seam/corner calculation. Expected 3 or fewer sharedBlocks, got " + sharedBlocks.size() + " instead.");
+        }
+
+        return summedNormal.normalize();
+    }
+
+    public static boolean isInteger(double value) {
+        return Math.abs(value - Math.round(value)) < 1e-6; // Adjust tolerance for floating-point precision
+    }
+
+
 }

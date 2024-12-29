@@ -5,44 +5,61 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
 import net.fabricmc.api.ClientModInitializer;
-
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fg83.craftverb.AbsorptionCoefficient;
 import net.fg83.craftverb.AudioUtils;
 import net.fg83.craftverb.Ray;
+import net.fg83.craftverb.task.PopulateRaysTask;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
-import net.minecraft.entity.Entity;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvent;
 import net.minecraft.text.Text;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.*;
-import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 public class CraftverbClient implements ClientModInitializer {
 
     public static final Map<String, List<AbsorptionCoefficient>> absorptionCoefficients = new HashMap<>();
     public static final Map<String, String> blockCoefficientKeys = new HashMap<>();
-    public Map<Double, Map<Integer, Double>> irMatrix = new HashMap<>();
-    public Map<Integer, AudioEvent> irBands = new HashMap<>();
 
     private static KeyBinding keyBinding;
     private boolean isKeyPressed = false;
 
-    Queue<Ray> rayQueue = new LinkedList<>();
+    public static boolean trackingProgress;
+    public static int lastProgressUpdate;
+
+    public Map<Double, Map<Integer, Double>> irMatrix;
+    public Map<Integer, AudioEvent> irBands;
+
+    public ForkJoinPool rayPool;
+    public Queue<Ray> tracedRayQueue;
+
+    public AtomicBoolean isCastingRays;
+    public AtomicBoolean isGeneratingIR;
 
     @Override
     public void onInitializeClient() {
         loadAbsorptionCoefficients();
         loadBlockCoefficientKeys();
+        initialize();
 
         keyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "Ray Step", // The translation key for the keybinding
@@ -58,8 +75,9 @@ public class CraftverbClient implements ClientModInitializer {
             if (isIPressed) {
                 if (!isKeyPressed) {
                     client.player.sendMessage(Text.of("Grab some coffee, this is going to take a while."), false);
-                    client.player.sendMessage(Text.of("Starting acoustic trace..."), false);
-                    processRay(client);
+
+                    new Thread(new PopulateRaysTask(client, this)).start();
+                    
                     isKeyPressed = true;
                 }
             } else {
@@ -69,46 +87,27 @@ public class CraftverbClient implements ClientModInitializer {
 
     }
 
-    private void processRay(MinecraftClient client) {
-        assert client.player != null;
+    public void initialize(){
+        trackingProgress = false;
+        lastProgressUpdate = -1;
 
-        Entity camera = client.cameraEntity;
+        irMatrix = new HashMap<>();
+        irBands = new HashMap<>();
 
-        if (camera == null) {
-            return;
-        }
-        int rayNumber = 0;
-        System.out.println("Starting trace...");
-        for (float pitch = -90.0F; pitch <= 90.0F; pitch += 0.1F) {
-            for (float yaw = -180.0F; yaw <= 180.0F; yaw += 0.1F) {
+        rayPool = new ForkJoinPool(); // Creates a custom ForkJoinPool
 
-                Vec3d startPos = camera.getEyePos();
-                Vec3d currentDir = camera.getRotationVector(pitch, yaw); // Modify yaw/pitch here
+        tracedRayQueue = new ConcurrentLinkedQueue<>();
 
-                Ray ray = new Ray(startPos, currentDir, camera);
-                ray.trace();
-                addEnergyToIR(ray.getDelayTime(), ray.getEnergy());
-                if (rayNumber % 64800 == 0){
-
-                    String progress = String.valueOf((((Math.round((double) rayNumber * 1000) / 1000) / 64800000) * 100));
-                    int length = Math.min(progress.length(), 4);
-                    //client.player.sendMessage(Text.of(progress.substring(0, length) + "%"), false);
-                    System.out.println(progress.substring(0, length) + "%");
-                }
-                rayNumber++;
-            }
-        }
-        System.out.println("Trace complete");
-        System.out.println("Generating IR...");
-        generateIR();
+        isCastingRays = new AtomicBoolean(false);
+        isGeneratingIR = new AtomicBoolean(false);
     }
 
-    private void generateIR(){
+
+    public void generateIR(MinecraftClient client){
         for (int frequencyBand : Ray.FREQUENCY_BANDS) {
             int sampleLength = (int) Math.round(irMatrix.keySet().stream().max(Comparator.naturalOrder()).get()) + 1;
             int min = (int) Math.round(irMatrix.keySet().stream().min(Comparator.naturalOrder()).get()) + 1;
 
-            System.out.println("Length: " + sampleLength + " samples (" + sampleLength / 48000.0 + " seconds)");
             irBands.put(frequencyBand, AudioUtils.createAudioEventFromSamples(min, new float[sampleLength]));
         }
 
@@ -141,13 +140,40 @@ public class CraftverbClient implements ClientModInitializer {
         });
         AudioEvent combinedIR = AudioUtils.combineBands(irBands);
         AudioUtils.cleanupIR(combinedIR);
+        double length = (double) Math.round(((double) combinedIR.getBufferSize() / AudioUtils.SAMPLE_RATE) * 100) / 100;
 
-        System.out.println("IR generated");
-        System.out.println("Writing WAV file");
-        AudioUtils.writeWavFile("finalIR.wav", combinedIR);
+        client.player.sendMessage(Text.of("IR waveform generated! (" + length + " seconds)"), false);
+        
+        Path directoryPath = Paths.get("VerbCrafter");
+        if (!Files.exists(directoryPath)) {
+            try {
+                Files.createDirectory(directoryPath);
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String name;
+        if (client.isIntegratedServerRunning() && client.getServer() != null) {
+            name = client.getServer().getSaveProperties().getLevelName();
+        }
+        else {
+            name = client.getCurrentServerEntry().name;
+        }
+
+        String filename = "IR_" + name + "_" + timestamp + ".wav";
+        
+        AudioUtils.writeWavFile("VerbCrafter" + File.separator + filename, combinedIR);
+
+        client.player.playSoundToPlayer(SoundEvent.of(Identifier.of("minecraft", "block.amethyst_block.chime")), SoundCategory.PLAYERS, 2.0F, 0.8F);
+        client.player.sendMessage(Text.of("Wrote file '" + filename + "'!"), false);
+
+        initialize();
     }
 
-    private void addEnergyToIR(double delayTime, Map<Integer, Double> newEnergy){
+    public void addEnergyToIR(double delayTime, Map<Integer, Double> newEnergy){
         irMatrix.merge(delayTime, newEnergy, (existingEnergy, incomingEnergy) -> {
             incomingEnergy.forEach((frequency, energy) ->
                     existingEnergy.merge(frequency, energy, Double::sum)
@@ -156,6 +182,39 @@ public class CraftverbClient implements ClientModInitializer {
         });
     }
 
+    public static void reportProgress(CraftverbClient craftverbClient, MinecraftClient client) {
+        final int totalRays = 6480000;
+
+        // Calculate progress percentage
+        int currentSize = craftverbClient.tracedRayQueue.size();
+        int percentage = Math.round(((float) currentSize / totalRays) * 100);
+        int progressStep = (int) Math.floor((double) percentage / 5);
+
+        // Check if progress needs to be updated
+        if (progressStep > lastProgressUpdate) {
+            lastProgressUpdate = progressStep;
+
+            // Build the progress bar message
+            String progressMessage = buildProgressMessage(progressStep);
+
+            // Send the message to the player
+            client.player.sendMessage(Text.of(progressMessage), false);
+        }
+    }
+
+    // Helper method to build the progress bar
+    private static String buildProgressMessage(int progressStep) {
+        StringBuilder progressBar = new StringBuilder("[");
+        for (int i = 0; i < 20; i++) {
+            if (i < progressStep) {
+                progressBar.append("◆");
+            } else {
+                progressBar.append("◇");
+            }
+        }
+        progressBar.append("] ").append(progressStep * 5).append("%");
+        return progressBar.toString();
+    }
 
     private void loadAbsorptionCoefficients() {
         try (InputStream inputStream = getClass().getResourceAsStream("/coefficient_sets.json");

@@ -1,18 +1,21 @@
 package net.fg83.craftverb;
 
 import net.fg83.craftverb.client.CraftverbClient;
+import net.fg83.craftverb.task.CastRayTask;
 import net.minecraft.block.BlockState;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 import org.joml.Vector3d;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -21,6 +24,7 @@ public class Ray {
     private Vec3d currentPos;
     private Vec3d currentDir;
     private final Entity castEntity;
+    private boolean hitTarget = false;
     private boolean traced = false;
     private final AtomicBoolean tracing = new AtomicBoolean(false);
 
@@ -44,60 +48,68 @@ public class Ray {
         }
     }
 
+    public Ray(Vec3d pos, Vec3d dir, Entity castEntity, double totalDistance, Map<Integer, Double> energy) {
+        this.startPos = pos;
+        this.currentPos = pos;
+        this.currentDir = dir;
+        this.castEntity = castEntity;
+        this.totalDistance = totalDistance;
+        this.energy = energy;
+    }
+
+    public boolean didHitTarget() {
+        return hitTarget;
+    }
+
     public void trace(){
         tracing.set(true);
         while (totalDistance < MAX_DISTANCE) {
             HitResult hitResult = performRaycast(currentPos, currentDir, (MAX_DISTANCE - totalDistance) / 2, castEntity);
 
-            if (totalDistance > 1 && VectorUtils.doesVectorPassThroughPoint(currentPos, castEntity.getEyePos(), currentDir, 1)){
+            if (totalDistance > 0 && VectorUtils.doesVectorPassThroughPoint(currentPos, castEntity.getEyePos(), currentDir, 1)){
                 totalDistance += currentPos.distanceTo(castEntity.getEyePos());
 
                 //System.out.println("Hit origin!");  // Log the block type
                 //System.out.println("Energy: " + energy.toString());
                 //System.out.println("Delay: " + calculateDelaySamples() + " (" + totalDistance + " meters)");
+                this.hitTarget = true;
                 break;
             }
 
             if (hitResult.getType() == HitResult.Type.BLOCK) {
                 BlockHitResult blockHitResult = (BlockHitResult) hitResult;
                 Vec3d hitPos = blockHitResult.getPos();
-                double correctedX = (double) Math.round(hitPos.getX() * 100) / 100;
-                double correctedY = (double) Math.round(hitPos.getY() * 100) / 100;
-                double correctedZ = (double) Math.round(hitPos.getZ() * 100) / 100;
+                double correctedX = (double) Math.round(hitPos.getX() * 10000) / 10000;
+                double correctedY = (double) Math.round(hitPos.getY() * 10000) / 10000;
+                double correctedZ = (double) Math.round(hitPos.getZ() * 10000) / 10000;
                 Vec3d correctedHit = new Vec3d(correctedX, correctedY, correctedZ);
 
-                BlockState blockState = castEntity.getWorld().getBlockState(blockHitResult.getBlockPos());  // Get the block state at the position
-
-                //System.out.println("Hit block " + blockState.getBlock().toString() + " at " + correctedHit.toString() + " (Total Distance: " + totalDistance + ")");  // Log the block type
-
-                String coefficientKey = fetchCoefficientKey(blockState.getBlock().toString());
-                List<AbsorptionCoefficient> absorptionCoefficients = getAbsorptionCoefficients(coefficientKey);
-                if (absorptionCoefficients == null){
-                    break;
-                }
 
                 double castDistance = currentDir.distanceTo(correctedHit);
-
                 applyDistanceAttenuation(castDistance);
-                applyMaterialAttenuation(absorptionCoefficients);
-
                 totalDistance += castDistance;
-                /*if (castEntity.getPos().distanceTo(new Vec3d(correctedHit.getX(), correctedHit.getY(), correctedHit.getZ())) <= 1) {
-                    System.out.println("Hit origin!");  // Log the block type
-                    System.out.println("Energy: " + energy.toString());
-                    System.out.println("Delay: " + calculateDelaySamples() + " (" + totalDistance + " meters)");
-                    break;  // If the ray hits the entity
-                }*/
 
-                Vec3d hitNormal = new Vec3d(blockHitResult.getSide().getUnitVector().normalize());
-                currentDir = Ray.asVec3d(Ray.asVector3d(currentDir).reflect(Ray.asVector3d(hitNormal)));
+                List<BlockPos> sharedBlocks = VectorUtils.getSharedBlocks(blockHitResult, correctedHit);
+
+                sharedBlocks.forEach(blockPos -> {
+                    BlockState blockState = castEntity.getWorld().getBlockState(blockPos);  // Get the block state at the position
+                    if (!blockState.isAir()){
+                        String coefficientKey = fetchCoefficientKey(blockState.getBlock().toString());
+                        List<AbsorptionCoefficient> absorptionCoefficients = getAbsorptionCoefficients(coefficientKey);
+                        if (absorptionCoefficients != null){
+                            applyMaterialAttenuation(absorptionCoefficients);
+                        }
+                    }
+                });
+
+                Vec3d summedNormal = VectorUtils.getSummedNormal(blockHitResult, sharedBlocks, castEntity.getWorld());
+                currentDir = Ray.asVec3d(Ray.asVector3d(currentDir).reflect(Ray.asVector3d(summedNormal)));
                 currentPos = correctedHit;  // Update starting point for the next ray
             }
             else {
                 break;
             }
         }
-        //System.out.println("MISSED");
         tracing.set(false);
         traced = true;
     }
@@ -106,23 +118,6 @@ public class Ray {
 
         RaycastContext context = new RaycastContext(startPos, startPos.add(direction.multiply(maxDistance)), RaycastContext.ShapeType.OUTLINE, RaycastContext.FluidHandling.NONE, entity);
         return entity.getWorld().raycast(context);  // Perform the raycast
-    }
-
-    private boolean onEdge(Vec3d hitPos){
-        List<Integer> integerBlockBounds = new ArrayList<>(List.of(0, 0, 0));
-        if (hitPos.getX() % 1 == 0){
-            integerBlockBounds.set(0, 1);
-        }
-        if (hitPos.getY() % 1 == 0){
-            integerBlockBounds.set(1, 1);
-        }
-        if (hitPos.getZ() % 1 == 0){
-            integerBlockBounds.set(2, 1);
-        }
-
-        AtomicInteger edgeCount = new AtomicInteger();
-        integerBlockBounds.forEach(edgeCount::addAndGet);
-        return edgeCount.get() > 1;
     }
 
     private String fetchCoefficientKey(String blockNameRaw){

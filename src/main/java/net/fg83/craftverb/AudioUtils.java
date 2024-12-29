@@ -34,7 +34,6 @@ public class AudioUtils {
      * @return an AudioEvent instance containing the provided audio samples
      */
     public static AudioEvent createAudioEventFromSamples(int start, float[] samples) {
-        System.out.println("Delay Start: " + start);
         AudioEvent audioEvent = new AudioEvent(AudioUtils.AUDIO_FORMAT);
         audioEvent.setFloatBuffer(samples.clone());
 
@@ -272,11 +271,13 @@ public class AudioUtils {
      * @param event the AudioEvent object containing the audio data to be processed
      */
     public static void cleanupIR(AudioEvent event) {
+        removeLeadingZeros(event);
         reverseIR(event);
         removeLeadingZeros(event);
+        reverseIR(event);
         trimSilence(event);
         trimDecay(event);
-        adjustDecay(event);
+        //adjustDecay(event);
     }
 
     /**
