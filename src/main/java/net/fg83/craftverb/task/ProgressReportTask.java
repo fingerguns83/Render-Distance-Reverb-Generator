@@ -34,5 +34,6 @@ public class ProgressReportTask implements Runnable{
                 throw new RuntimeException(e);
             }
         }
+        CraftverbClient.reportProgress(craftverbClient, client);
     }
 }

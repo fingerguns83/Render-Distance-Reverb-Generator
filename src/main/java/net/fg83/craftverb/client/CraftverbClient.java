@@ -17,7 +17,9 @@ import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvent;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
 
@@ -43,6 +45,8 @@ public class CraftverbClient implements ClientModInitializer {
     private static KeyBinding keyBinding;
     private boolean isKeyPressed = false;
 
+    public static long raysSubmitted;
+    public static long processedRays;
     public static boolean trackingProgress;
     public static int lastProgressUpdate;
 
@@ -74,9 +78,8 @@ public class CraftverbClient implements ClientModInitializer {
 
             if (isIPressed) {
                 if (!isKeyPressed) {
-                    client.player.sendMessage(Text.of("Grab some coffee, this is going to take a while."), false);
 
-                    new Thread(new PopulateRaysTask(client, this)).start();
+                    new Thread(new PopulateRaysTask(client.cameraEntity, client.cameraEntity, client, this)).start();
                     
                     isKeyPressed = true;
                 }
@@ -88,6 +91,8 @@ public class CraftverbClient implements ClientModInitializer {
     }
 
     public void initialize(){
+        raysSubmitted = 0;
+        processedRays = 0;
         trackingProgress = false;
         lastProgressUpdate = -1;
 
@@ -111,9 +116,9 @@ public class CraftverbClient implements ClientModInitializer {
             irBands.put(frequencyBand, AudioUtils.createAudioEventFromSamples(min, new float[sampleLength]));
         }
 
-
         irBands.forEach((frequencyBand, audioEvent) -> {
-            AudioUtils.applyAttenuation(audioEvent, irMatrix, frequencyBand);
+            //AudioUtils.applyAttenuation(audioEvent, irMatrix, frequencyBand);
+            AudioUtils.smoothAndApplyDecay(audioEvent, irMatrix, frequencyBand, 0.2F, 50, 0.01F, 0.5);
 
             switch (frequencyBand){
                 case 125:
@@ -142,7 +147,7 @@ public class CraftverbClient implements ClientModInitializer {
         AudioUtils.cleanupIR(combinedIR);
         double length = (double) Math.round(((double) combinedIR.getBufferSize() / AudioUtils.SAMPLE_RATE) * 100) / 100;
 
-        client.player.sendMessage(Text.of("IR waveform generated! (" + length + " seconds)"), false);
+        sendPlayerMessage(client, "IR waveform generated! (" + length + " seconds)", new Formatting[]{Formatting.GOLD});
         
         Path directoryPath = Paths.get("VerbCrafter");
         if (!Files.exists(directoryPath)) {
@@ -168,7 +173,7 @@ public class CraftverbClient implements ClientModInitializer {
         AudioUtils.writeWavFile("VerbCrafter" + File.separator + filename, combinedIR);
 
         client.player.playSoundToPlayer(SoundEvent.of(Identifier.of("minecraft", "block.amethyst_block.chime")), SoundCategory.PLAYERS, 2.0F, 0.8F);
-        client.player.sendMessage(Text.of("Wrote file '" + filename + "'!"), false);
+        sendPlayerMessage(client, "Wrote file '" + filename + "'!", new Formatting[]{Formatting.GOLD});
 
         initialize();
     }
@@ -183,27 +188,27 @@ public class CraftverbClient implements ClientModInitializer {
     }
 
     public static void reportProgress(CraftverbClient craftverbClient, MinecraftClient client) {
-        final int totalRays = 6480000;
+        final int totalRays = 10810429;
 
         // Calculate progress percentage
-        int currentSize = craftverbClient.tracedRayQueue.size();
-        int percentage = Math.round(((float) currentSize / totalRays) * 100);
-        int progressStep = (int) Math.floor((double) percentage / 5);
+        float percentage = ((float) processedRays / totalRays) * 100;
+
+        int progressStep = (int) Math.floor((double) Math.floor(percentage) / 5);
 
         // Check if progress needs to be updated
         if (progressStep > lastProgressUpdate) {
             lastProgressUpdate = progressStep;
 
             // Build the progress bar message
-            String progressMessage = buildProgressMessage(progressStep);
+            String progressMessage = buildProgressBar(progressStep);
 
             // Send the message to the player
-            client.player.sendMessage(Text.of(progressMessage), false);
+            sendPlayerMessage(client, progressMessage, new Formatting[]{Formatting.AQUA});
         }
     }
 
     // Helper method to build the progress bar
-    private static String buildProgressMessage(int progressStep) {
+    private static String buildProgressBar(int progressStep) {
         StringBuilder progressBar = new StringBuilder("[");
         for (int i = 0; i < 20; i++) {
             if (i < progressStep) {
@@ -260,4 +265,12 @@ public class CraftverbClient implements ClientModInitializer {
             throw new RuntimeException("Failed to load item_map.json", e);
         }
     }
+
+    public static void sendPlayerMessage(MinecraftClient client, String message, Formatting[] formattingArray){
+        MutableText messageText = Text.literal(message);
+        messageText.formatted(formattingArray);
+        assert client.player != null;
+        client.player.sendMessage(messageText, false);
+    }
+
 }

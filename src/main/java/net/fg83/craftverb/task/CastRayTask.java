@@ -30,6 +30,7 @@ public class CastRayTask implements Runnable{
             return;
         }
         ray.trace(craftverbClient, client);
+        CraftverbClient.processedRays++;
         if (ray.didHitTarget()){
             craftverbClient.tracedRayQueue.add(ray);
         }

@@ -4,6 +4,7 @@ import net.fg83.craftverb.Ray;
 import net.fg83.craftverb.client.CraftverbClient;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 
 import java.util.Map;
 
@@ -28,8 +29,11 @@ public class BuildIRTask implements Runnable {
                 e.printStackTrace();
             }
         }
+        System.out.println("BuildIRTask has proceeded to run.");
+        double percentHit = (float) (Math.round(((float) craftverbClient.tracedRayQueue.size() / CraftverbClient.processedRays) * 10000)) / 100;
+        System.out.println(CraftverbClient.processedRays + " rays processed | " + craftverbClient.tracedRayQueue.size() + " rays hit target (" + percentHit + "%)");
         if (!craftverbClient.isCastingRays.compareAndSet(true, false)) {
-            client.player.sendMessage(Text.of("Error building waveform. Please try again."), false);
+            CraftverbClient.sendPlayerMessage(client, "Error building waveform. Please try again.", new Formatting[]{Formatting.RED});
             return;
         }
 

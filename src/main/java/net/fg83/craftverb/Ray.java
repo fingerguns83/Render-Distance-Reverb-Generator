@@ -1,7 +1,6 @@
 package net.fg83.craftverb;
 
 import net.fg83.craftverb.client.CraftverbClient;
-import net.fg83.craftverb.task.CastRayTask;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.Entity;
@@ -12,40 +11,34 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 import org.joml.Vector3d;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 
 public class Ray {
+    private LocalDateTime startTime;
     private final Vec3d startPosition;
-    private final Vec3d currentPosition;
-    private final Vec3d currentDirection;
+    private Vec3d currentPosition;
+    private Vec3d currentDirection;
     private final Entity castingEntity;
+    private final Entity targetEntity;
     private boolean hasHitTarget = false;
     private final Map<Integer, Double> energy;  // Map frequency (Hz) to energy
     private double totalTraveledDistance = 0;  // Total distance the ray has traveled
 
     // Constants for frequency bands
     public static final int[] FREQUENCY_BANDS = {125, 250, 500, 1000, 2000, 4000};
-    public static final int DEFAULT_MAX_DISTANCE = 512;
+    public static final int DEFAULT_MAX_DISTANCE = 1700;
 
     // Constructor to initialize ray with energy values for each frequency band
-    public Ray(Vec3d position, Vec3d direction, Entity castingEntity) {
+    public Ray(Vec3d position, Vec3d direction, Entity castingEntity, Entity targetEntity) {
         this.startPosition = position;
         this.currentPosition = position;
         this.currentDirection = direction;
         this.castingEntity = castingEntity;
+        this.targetEntity = targetEntity;
         this.energy = initializeEnergyValues();
-    }
-
-    public Ray(Vec3d position, Vec3d direction, Entity castingEntity, double totalTraveledDistance, Map<Integer, Double> initialEnergy) {
-        this.startPosition = position;
-        this.currentPosition = position;
-        this.currentDirection = direction;
-        this.castingEntity = castingEntity;
-        this.totalTraveledDistance = totalTraveledDistance;
-        this.energy = new HashMap<>(initialEnergy);
     }
 
     private Map<Integer, Double> initializeEnergyValues() {
@@ -61,25 +54,30 @@ public class Ray {
     }
 
     public void trace(CraftverbClient craftverbClient, MinecraftClient client) {
-        if (totalTraveledDistance >= DEFAULT_MAX_DISTANCE) {
-            return;
-        }
+        while (true) {
+            HitResult hitResult = performRaycast(currentPosition, currentDirection, DEFAULT_MAX_DISTANCE, castingEntity);
+            if (isPassingThroughTarget()) {
+                handleTargetHit(castingEntity.getEyePos());
+                return;
+            }
 
-        HitResult hitResult = performRaycast(currentPosition, currentDirection, (DEFAULT_MAX_DISTANCE - totalTraveledDistance), castingEntity);
-        if (isPassingThroughOrigin()) {
-            handleTargetHit(castingEntity.getEyePos());
-            return;
-        }
+            if (hitResult.getType() == HitResult.Type.BLOCK) {
+                BlockHitResult blockHitResult = (BlockHitResult) hitResult;
+                Vec3d roundedHitPos = roundHitPosition(blockHitResult.getPos());
+                handleBlockHit(blockHitResult, roundedHitPos, craftverbClient, client);
+            }
+            else {
+                return;
+            }
 
-        if (hitResult.getType() == HitResult.Type.BLOCK) {
-            BlockHitResult blockHitResult = (BlockHitResult) hitResult;
-            Vec3d roundedHitPos = roundHitPosition(blockHitResult.getPos());
-            handleBlockHit(blockHitResult, roundedHitPos, craftverbClient, client);
+            if (isDissipated()) {
+                return;
+            }
         }
     }
 
-    private boolean isPassingThroughOrigin() {
-        return totalTraveledDistance > 0 && VectorUtils.doesVectorPassThroughPoint(currentPosition, castingEntity.getEyePos(), currentDirection, 1);
+    private boolean isPassingThroughTarget() {
+        return totalTraveledDistance > 0 && VectorUtils.doesVectorPassThroughPoint(currentPosition, targetEntity.getEyePos(), currentDirection, 1);
     }
 
     private void handleTargetHit(Vec3d eyePosition) {
@@ -107,13 +105,10 @@ public class Ray {
         List<BlockPos> intersectedBlocks = VectorUtils.getSharedBlocks(blockHitResult, roundedHitPos);
         processBlockMaterials(intersectedBlocks);
 
-        if (isDissipated()) {
-            return;
-        }
-
         Vec3d summedNormal = VectorUtils.getSummedNormal(blockHitResult, intersectedBlocks, castingEntity.getWorld());
-        SurfaceType surfaceType = VectorUtils.isPointOnEdge(roundedHitPos);
-        submitDiffuseRays(craftverbClient, client, roundedHitPos, summedNormal, surfaceType);
+
+        currentDirection = Ray.asVec3d(Ray.asVector3d(currentDirection).reflect(Ray.asVector3d(summedNormal)));
+        currentPosition = roundedHitPos;
     }
 
     private void processBlockMaterials(List<BlockPos> intersectedBlocks) {
@@ -127,34 +122,6 @@ public class Ray {
                 }
             }
         });
-    }
-
-    private void submitDiffuseRays(CraftverbClient craftverbClient, MinecraftClient client, Vec3d startPos, Vec3d summedNormal, SurfaceType surfaceType) {
-        int diffuseRays = calculateDiffuseRays(surfaceType);
-        Random random = new Random();
-
-        for (int i = 0; i < diffuseRays; i++) {
-            Vec3d direction = generateDirectionForSurfaceType(surfaceType, summedNormal, random);
-            craftverbClient.rayPool.submit(() -> new CastRayTask(
-                    new Ray(startPos, direction, castingEntity, totalTraveledDistance, energy), client, craftverbClient).run());
-        }
-    }
-
-    private int calculateDiffuseRays(SurfaceType surfaceType) {
-        final int BASE_DIFFUSE_RAYS = 64;
-        return switch (surfaceType) {
-            case FLAT -> BASE_DIFFUSE_RAYS;
-            case SEAM -> BASE_DIFFUSE_RAYS / 2;
-            case CORNER -> BASE_DIFFUSE_RAYS / 4;
-        };
-    }
-
-    private Vec3d generateDirectionForSurfaceType(SurfaceType surfaceType, Vec3d normal, Random random) {
-        return switch (surfaceType) {
-            case FLAT -> VectorUtils.generateRandomHemisphereDirection(normal, random);
-            case SEAM -> VectorUtils.generateRandomQuarterSphereDirection(normal, random);
-            case CORNER -> VectorUtils.generateRandomEighthSphereDirection(normal, random);
-        };
     }
 
     private HitResult performRaycast(Vec3d startPos, Vec3d direction, double maxDistance, Entity entity) {
@@ -216,6 +183,6 @@ public class Ray {
     }
 
     public boolean isDissipated(){
-        return energy.values().stream().allMatch(e -> e <= 0.000001);
+        return energy.values().stream().allMatch(e -> e <= 0.00000001);
     }
 }

@@ -10,10 +10,11 @@ import be.tarsos.dsp.io.jvm.WaveformWriter;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class AudioUtils {
     public static final int SAMPLE_RATE = 48000;
-    private static final int SAMPLE_SIZE_IN_BITS = 24; // Typical value for audio processing
+    private static final int SAMPLE_SIZE_IN_BITS = 32; // Typical value for audio processing
     private static final int CHANNELS = 1; // Mono for IR
     private static final boolean SIGNED = true;
     private static final boolean BIG_ENDIAN = false;
@@ -126,14 +127,124 @@ public class AudioUtils {
                 }
                 else {
                     absorp = new BigDecimal(coef)
-                        .setScale(7, RoundingMode.HALF_UP)
+                        .setScale(8, RoundingMode.HALF_UP)
                         .floatValue();
                 }
                 float val = ((((float) Math.random()) - 0.5F) * absorp);
                 inbuffer[i] = val;
             }
         }
+    }
 
+    public static void smoothAndApplyDecay(
+            AudioEvent event,
+            Map<Double, Map<Integer, Double>> irMatrix,
+            Integer frequencyBand,
+            float diffusionAlpha,
+            int smoothingIterations,
+            float noiseFloor,
+            double decayScale
+    ) {
+        float[] inbuffer = event.getFloatBuffer();
+        float[] smoothedBuffer = new float[inbuffer.length];
+
+        // Step 1: Copy IR data into a working buffer
+        for (int i = 0; i < inbuffer.length; i++) {
+            if (irMatrix.containsKey((double) i) && irMatrix.get((double) i).containsKey(frequencyBand)) {
+                double coef = irMatrix.get((double) i).get(frequencyBand);
+                smoothedBuffer[i] = applyCoefficient(coef);
+            } else {
+                smoothedBuffer[i] = 0.0F;
+            }
+        }
+
+        // Step 2: Estimate decay curve
+        double firstEntry = findFirstNonZeroEntry(irMatrix, frequencyBand);
+        double lastEntry = findLastNonZeroEntry(irMatrix, frequencyBand);
+        double middleEntry = findMiddleEntry(irMatrix, frequencyBand);
+
+        // Approximate decay curve: logarithmic or exponential
+        double decayRate = calculateDecayRate(firstEntry, middleEntry, lastEntry, decayScale);
+
+        // Step 3: Apply smoothing
+        for (int iter = 0; iter < smoothingIterations; iter++) {
+            float[] tempBuffer = smoothedBuffer.clone();
+            for (int i = 1; i < smoothedBuffer.length - 1; i++) {
+                smoothedBuffer[i] += diffusionAlpha * (tempBuffer[i - 1] + tempBuffer[i + 1] - 2 * tempBuffer[i]);
+            }
+        }
+
+        // Step 4: Apply noise and decay envelope
+        for (int i = 0; i < inbuffer.length; i++) {
+            float absorp = smoothedBuffer[i];
+            absorp = Math.max(0.0F, Math.min(absorp, 1.0F)); // Clamp to [0, 1]
+
+            // Calculate the decay envelope
+            float decayFactor = calculateDecayFactor(i, firstEntry, decayRate);
+            absorp *= decayFactor;
+
+            // Add noise and center on 0
+            float noise = ((((float) Math.random()) - 0.5F) * absorp);
+            inbuffer[i] = noise + (absorp > 0.0F ? noiseFloor * absorp : 0.0F);
+        }
+    }
+
+    // Helper to find the first non-zero entry
+    private static double findFirstNonZeroEntry(Map<Double, Map<Integer, Double>> irMatrix, Integer frequencyBand) {
+        return irMatrix.keySet().stream()
+                .sorted()
+                .filter(key -> irMatrix.get(key).containsKey(frequencyBand) && irMatrix.get(key).get(frequencyBand) > 0)
+                .findFirst()
+                .orElse(0.0);
+    }
+
+    // Helper to find the last non-zero entry
+    private static double findLastNonZeroEntry(Map<Double, Map<Integer, Double>> irMatrix, Integer frequencyBand) {
+        return irMatrix.keySet().stream()
+                .sorted(Comparator.reverseOrder())
+                .filter(key -> irMatrix.get(key).containsKey(frequencyBand) && irMatrix.get(key).get(frequencyBand) > 0)
+                .findFirst()
+                .orElse(0.0);
+    }
+
+    // Helper to find a middle entry (or calculate an average of several middle points)
+    private static double findMiddleEntry(Map<Double, Map<Integer, Double>> irMatrix, Integer frequencyBand) {
+        List<Double> keys = irMatrix.keySet().stream()
+                .sorted()
+                .filter(key -> irMatrix.get(key).containsKey(frequencyBand) && irMatrix.get(key).get(frequencyBand) > 0)
+                .toList();
+        if (keys.isEmpty()) return 0.0;
+        return keys.get(keys.size() / 2);
+    }
+
+    // Helper to calculate decay rate (simple approximation for now)
+    private static double calculateDecayRate(double first, double middle, double last, double decayScale) {
+        if (middle == 0 || last == 0) return 0.1; // Avoid division by zero
+
+        // Modify the logarithmic rate with the decayScale
+        double rate = Math.log(last / first) / (last - first);
+
+        // Apply decay scaling for flexibility
+        return rate * decayScale; // Scale the rate to adjust steepness
+    }
+
+
+    // Helper to calculate decay factor
+    private static float calculateDecayFactor(int index, double first, double decayRate) {
+        if (decayRate == 0) return 1.0F; // No decay
+        return (float) Math.exp(-decayRate * (index - first));
+    }
+
+    private static float applyCoefficient(double coef) {
+        if (coef < 0) {
+            return 0.0F;
+        } else if (coef > 1) {
+            return 1.0F;
+        } else {
+            return new BigDecimal(coef)
+                    .setScale(8, RoundingMode.HALF_UP)
+                    .floatValue();
+        }
     }
 
     /**

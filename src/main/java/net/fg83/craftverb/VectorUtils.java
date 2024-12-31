@@ -92,24 +92,38 @@ public class VectorUtils {
         boolean isYInt = isInteger(y);
         boolean isZInt = isInteger(z);
 
-        SurfaceType unspecificSurfaceType = isPointOnEdge(hitPos);
+        SurfaceType surfaceType = isPointOnEdge(hitPos);
 
         BlockPos hitBlockPos = blockHitResult.getBlockPos();
         sharedBlocks.add(hitBlockPos);
 
-        if (unspecificSurfaceType == SurfaceType.CORNER || unspecificSurfaceType == SurfaceType.SEAM){
+        if (surfaceType == SurfaceType.CORNER || surfaceType == SurfaceType.SEAM){
             List<Direction> offsets = new ArrayList<>();
 
-            if (isXInt && Math.round(x) == hitBlockPos.getX())      {offsets.add(Direction.WEST);}
-            else if (isXInt && Math.round(x) == hitBlockPos.getX() + 1)  {offsets.add(Direction.EAST);}
-
-            if (isYInt && Math.round(y) == hitBlockPos.getZ())      {offsets.add(Direction.NORTH);}
-            else if (isYInt && Math.round(y) == hitBlockPos.getZ() + 1)  {offsets.add(Direction.SOUTH);}
-
-            if (isZInt && Math.round(z) == hitBlockPos.getY())      {offsets.add(Direction.DOWN);}
-            else if (isZInt && Math.round(z) == hitBlockPos.getY() + 1)  {offsets.add(Direction.UP);}
-
-
+            if (isXInt){
+                if (Math.round(x) == hitBlockPos.getX()){
+                    offsets.add(Direction.WEST);
+                }
+                else {
+                    offsets.add(Direction.EAST);
+                }
+            }
+            if (isYInt){
+                if (Math.round(y) == hitBlockPos.getZ()){
+                    offsets.add(Direction.NORTH);
+                }
+                else {
+                    offsets.add(Direction.SOUTH);
+                }
+            }
+            if (isZInt){
+                if (Math.round(z) == hitBlockPos.getY()){
+                    offsets.add(Direction.DOWN);
+                }
+                else {
+                    offsets.add(Direction.UP);
+                }
+            }
 
             if (offsets.size() == 2){
                 sharedBlocks.add(hitBlockPos.offset(offsets.get(0)).offset(offsets.get(1)));
@@ -227,76 +241,11 @@ public class VectorUtils {
         return Math.abs(value - Math.round(value)) < 1e-6; // Adjust tolerance for floating-point precision
     }
 
-
-    public static Vec3d generateRandomHemisphereDirection(Vec3d normal, Random random) {
-        // Generate a random direction in the +z hemisphere
-        double theta = 2 * Math.PI * random.nextDouble(); // Azimuth
-        double phi = Math.acos(random.nextDouble()); // Elevation
-
-        double x = Math.sin(phi) * Math.cos(theta);
-        double y = Math.sin(phi) * Math.sin(theta);
-        double z = Math.cos(phi);
-
-        Vec3d localDirection = new Vec3d(x, y, z);
-
-        // Align the local hemisphere with the given normal
-        return alignWithNormal(localDirection, normal);
-    }
-
-    public static Vec3d generateRandomQuarterSphereDirection(Vec3d normal, Random random) {
-        // Generate a random direction within the quarter-sphere
-        double theta = Math.PI / 2 * random.nextDouble(); // Restrict azimuth to a quarter
-        double phi = Math.acos(random.nextDouble()); // Elevation
-
-        double x = Math.sin(phi) * Math.cos(theta);
-        double y = Math.sin(phi) * Math.sin(theta);
-        double z = Math.cos(phi);
-
-        Vec3d localDirection = new Vec3d(x, y, z);
-
-        // Align the local quarter-sphere with the given normal
-        return alignWithNormal(localDirection, normal);
-    }
-
-    public static Vec3d generateRandomEighthSphereDirection(Vec3d normal, Random random) {
-        // Generate a random direction within the eighth-sphere
-        double theta = Math.PI / 4 * random.nextDouble(); // Restrict azimuth to an eighth
-        double phi = Math.acos(random.nextDouble()); // Elevation
-
-        double x = Math.sin(phi) * Math.cos(theta);
-        double y = Math.sin(phi) * Math.sin(theta);
-        double z = Math.cos(phi);
-
-        Vec3d localDirection = new Vec3d(x, y, z);
-
-        // Align the local eighth-sphere with the given normal
-        return alignWithNormal(localDirection, normal);
-    }
-
-    private static Vec3d alignWithNormal(Vec3d localDirection, Vec3d normal) {
-        Vec3d up = new Vec3d(0, 0, 1); // Default "up" vector
-
-        // If the normal is aligned with the +z axis, return the local direction as-is
-        if (normal.equals(up)) {
-            return localDirection;
-        }
-
-        // Calculate rotation axis and angle
-        Vec3d rotationAxis = up.crossProduct(normal).normalize();
-        double angle = Math.acos(up.dotProduct(normal));
-
-        // Rotate the local direction to align with the normal
-        return rotateVector(localDirection, rotationAxis, angle);
-    }
-
-    private static Vec3d rotateVector(Vec3d vec, Vec3d axis, double angle) {
-        // Rodrigues' rotation formula
-        double cosTheta = Math.cos(angle);
-        double sinTheta = Math.sin(angle);
-
-        return vec.multiply(cosTheta)
-                .add(axis.crossProduct(vec).multiply(sinTheta))
-                .add(axis.multiply(axis.dotProduct(vec) * (1 - cosTheta)));
+    public static double getScaledRaysForPitch(float pitch) {
+        // Calculate the scaling factor b
+        double b = Math.log(54000) / 90;
+        // Return the exponential function
+        return Math.exp(b * pitch) + 1080;
     }
 
 
