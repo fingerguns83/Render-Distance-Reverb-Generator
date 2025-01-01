@@ -1,5 +1,11 @@
-package net.fg83.craftverb;
+package net.fg83.rdcompanion;
 
+/**
+ * The AbsorptionCoefficient class represents the relationship between a specific frequency band
+ * and its corresponding attenuation coefficient, which is used to describe the absorption characteristics
+ * of a material or medium at that frequency.
+ * This class is immutable and provides methods to access the frequency band and the attenuation coefficient values.
+ */
 public class AbsorptionCoefficient {
     private final int frequencyBand;
     private final double attenuationCoefficient;

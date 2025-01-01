@@ -1,4 +1,4 @@
-package net.fg83.craftverb;
+package net.fg83.rdcompanion;
 
 public enum SurfaceType {
     FLAT,

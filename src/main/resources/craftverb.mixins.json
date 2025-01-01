@@ -1,7 +1,7 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "net.fg83.craftverb.mixin",
+  "package": "net.fg83.rdcompanion.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
   ],

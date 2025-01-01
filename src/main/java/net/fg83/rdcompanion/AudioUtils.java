@@ -1,4 +1,4 @@
-package net.fg83.craftverb;
+package net.fg83.rdcompanion;
 
 import be.tarsos.dsp.AudioEvent;
 import be.tarsos.dsp.filters.BandPass;
@@ -10,14 +10,22 @@ import be.tarsos.dsp.io.jvm.WaveformWriter;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
-import java.util.stream.Collectors;
 
+/**
+ * Utility class for performing various operations on audio data, such as filtering,
+ * smoothing, attenuation application, decay processing, and signal manipulation.
+ */
 public class AudioUtils {
     public static final int SAMPLE_RATE = 48000;
     private static final int SAMPLE_SIZE_IN_BITS = 32; // Typical value for audio processing
     private static final int CHANNELS = 1; // Mono for IR
     private static final boolean SIGNED = true;
     private static final boolean BIG_ENDIAN = false;
+
+    public static final float DIFFUSION_ALPHA = 0.2F; // Smoothing "strength"
+    public static final int SMOOTHING_ITERATIONS = 50;
+    public static final float SMOOTHING_NOISE_FLOOR = 0.01F; // Noise floor inserted where there is no ray data
+    public static final float DECAY_SCALE = 0.0001F;
 
     public static final TarsosDSPAudioFormat AUDIO_FORMAT = new TarsosDSPAudioFormat(
             SAMPLE_RATE,
@@ -30,16 +38,13 @@ public class AudioUtils {
     /**
      * Creates an AudioEvent object from the specified starting index and float array of audio samples.
      *
-     * @param start the starting index, though not utilized in the current implementation
      * @param samples an array of float values representing the audio samples
      * @return an AudioEvent instance containing the provided audio samples
      */
-    public static AudioEvent createAudioEventFromSamples(int start, float[] samples) {
+    public static AudioEvent createAudioEventFromSamples(float[] samples) {
         AudioEvent audioEvent = new AudioEvent(AudioUtils.AUDIO_FORMAT);
         audioEvent.setFloatBuffer(samples.clone());
 
-        //float[] floatBuffer = audioEvent.getFloatBuffer();
-        //Arrays.fill(floatBuffer, 0);
         return audioEvent;
     }
 
@@ -103,48 +108,24 @@ public class AudioUtils {
     }
 
     /**
-     * Applies attenuation to the audio buffer within the provided AudioEvent object.
-     * This method adjusts the values in the audio buffer based on the attenuation
-     * coefficients specified in the irMatrix for the given frequency band.
+     * Smooths the input impulse response, applies decay effects, and adds noise based on the
+     * provided parameters. This method processes audio data in a time-domain buffer and modifies
+     * it in place to introduce diffusion, apply a decay envelope, and add noise.
      *
-     * @param event the AudioEvent object containing the audio data to be processed
-     * @param irMatrix a map where the keys represent sample indices and the values
-     *                 are maps with frequency bands as the key and attenuation coefficients as the value
-     * @param frequencyBand the specific frequency band used for attenuation
+     * @param event           The AudioEvent containing the input float buffer to process.
+     * @param irMatrix        A map containing impulse response (IR) coefficients indexed by
+     *                        time and frequency band.
+     * @param frequencyBand   The frequency band for which to apply processing.
+     * @param diffusionAlpha  A diffusion factor used during smoothing iterations.
+     *                        Higher values increase smoothing.
+     * @param smoothingIterations The number of smoothing iterations to perform.
+     *                             More iterations result in greater smoothing of the IR data.
+     * @param noiseFloor      A multiplier for the noise floor, affecting the intensity of
+     *                        added noise.
+     * @param decayScale      A scaling factor applied to the decay envelope, influencing
+     *                        the rate of decay applied to the IR data.
      */
-    public static void applyAttenuation(AudioEvent event, Map<Double, Map<Integer, Double>> irMatrix, Integer frequencyBand){
-        float[] inbuffer = event.getFloatBuffer();
-
-        for (int i = 0; i < inbuffer.length; i++) {
-            if (irMatrix.containsKey((double) i)) {
-                double coef = irMatrix.get((double) i).get(frequencyBand);
-                float absorp;
-                if (coef < 0){
-                    absorp = 0.0F;
-                }
-                else if (coef > 1){
-                    absorp = 1.0F;
-                }
-                else {
-                    absorp = new BigDecimal(coef)
-                        .setScale(8, RoundingMode.HALF_UP)
-                        .floatValue();
-                }
-                float val = ((((float) Math.random()) - 0.5F) * absorp);
-                inbuffer[i] = val;
-            }
-        }
-    }
-
-    public static void smoothAndApplyDecay(
-            AudioEvent event,
-            Map<Double, Map<Integer, Double>> irMatrix,
-            Integer frequencyBand,
-            float diffusionAlpha,
-            int smoothingIterations,
-            float noiseFloor,
-            double decayScale
-    ) {
+    public static void smoothAndApplyDecay(AudioEvent event, Map<Double, Map<Integer, Double>> irMatrix, Integer frequencyBand, float diffusionAlpha, int smoothingIterations, float noiseFloor, double decayScale) {
         float[] inbuffer = event.getFloatBuffer();
         float[] smoothedBuffer = new float[inbuffer.length];
 
@@ -189,7 +170,15 @@ public class AudioUtils {
         }
     }
 
-    // Helper to find the first non-zero entry
+    /**
+     * Finds the first non-zero entry in the specified frequency band from the given nested map.
+     *
+     * @param irMatrix a map where keys are doubles representing time or another metric, and values are maps
+     *                 of integers (frequency bands) to their respective double values (entries)
+     * @param frequencyBand the specific frequency band to search for a non-zero entry
+     * @return the first double key in the outer map that contains a non-zero value for the specified frequency
+     *         band, or 0.0 if no such entry exists
+     */
     private static double findFirstNonZeroEntry(Map<Double, Map<Integer, Double>> irMatrix, Integer frequencyBand) {
         return irMatrix.keySet().stream()
                 .sorted()
@@ -198,7 +187,17 @@ public class AudioUtils {
                 .orElse(0.0);
     }
 
-    // Helper to find the last non-zero entry
+    /**
+     * Finds the last non-zero entry in the given frequency band from the irMatrix.
+     * Iterates over the sorted keys of the irMatrix in reverse order to locate the
+     * first occurrence where the specified frequency band has a non-zero value.
+     *
+     * @param irMatrix a map where keys are doubles and values are maps of frequency
+     *                 bands (as integers) to their corresponding double values
+     * @param frequencyBand the frequency band (as an integer) to check for a non-zero value
+     * @return the key (as a double) of the irMatrix corresponding to the last non-zero
+     *         entry in the specified frequency band, or 0.0 if no such entry exists
+     */
     private static double findLastNonZeroEntry(Map<Double, Map<Integer, Double>> irMatrix, Integer frequencyBand) {
         return irMatrix.keySet().stream()
                 .sorted(Comparator.reverseOrder())
@@ -207,7 +206,14 @@ public class AudioUtils {
                 .orElse(0.0);
     }
 
-    // Helper to find a middle entry (or calculate an average of several middle points)
+    /**
+     * Finds the middle key from a sorted list of keys in the given irMatrix that correspond to
+     * a specific frequency band and have a positive value.
+     *
+     * @param irMatrix a map containing keys of type Double mapping to another map of Integer and Double values
+     * @param frequencyBand an Integer representing the frequency band to filter keys
+     * @return the middle key from the filtered and sorted list of keys, or 0.0 if no such key exists
+     */
     private static double findMiddleEntry(Map<Double, Map<Integer, Double>> irMatrix, Integer frequencyBand) {
         List<Double> keys = irMatrix.keySet().stream()
                 .sorted()
@@ -217,7 +223,17 @@ public class AudioUtils {
         return keys.get(keys.size() / 2);
     }
 
-    // Helper to calculate decay rate (simple approximation for now)
+    /**
+     * Calculates the decay rate based on the provided values and a scaling factor.
+     * This method computes a logarithmic rate of decay that is scaled by the given decayScale.
+     * If the middle or last value is zero, a default rate of 0.1 is returned to avoid division by zero.
+     *
+     * @param first The initial value in the sequence.
+     * @param middle The middle value in the sequence, used as a reference (not directly in computation in this version).
+     * @param last The final value in the sequence.
+     * @param decayScale A scaling factor to adjust the steepness of the decay rate.
+     * @return The calculated decay rate, or 0.1 if division by zero is avoided.
+     */
     private static double calculateDecayRate(double first, double middle, double last, double decayScale) {
         if (middle == 0 || last == 0) return 0.1; // Avoid division by zero
 
@@ -228,13 +244,28 @@ public class AudioUtils {
         return rate * decayScale; // Scale the rate to adjust steepness
     }
 
-
-    // Helper to calculate decay factor
+    /**
+     * Calculates the decay factor based on the given index, initial value, and decay rate.
+     *
+     * @param index     The index for which the decay factor is being calculated.
+     * @param first     The initial value used as a reference for the calculation.
+     * @param decayRate The rate at which the decay progresses.
+     * @return The calculated decay factor as a float value.
+     */
     private static float calculateDecayFactor(int index, double first, double decayRate) {
-        if (decayRate == 0) return 1.0F; // No decay
-        return (float) Math.exp(-decayRate * (index - first));
+        if (decayRate == 0) return 1.0F;
+        return (float) Math.pow(1.0 - decayRate * (index - first), 3);
     }
 
+    /**
+     * Adjusts the given coefficient value to a range between 0.0 and 1.0.
+     * If the coefficient is less than 0, it returns 0.0.
+     * If the coefficient is greater than 1, it returns 1.0.
+     * Otherwise, it rounds the coefficient to 8 decimal places and converts it to a float.
+     *
+     * @param coef the coefficient value to be adjusted, provided as a double.
+     * @return the adjusted coefficient as a float, constrained between 0.0 and 1.0.
+     */
     private static float applyCoefficient(double coef) {
         if (coef < 0) {
             return 0.0F;
@@ -320,7 +351,7 @@ public class AudioUtils {
     public static void trimSilence(AudioEvent event) {
         float[] inbuffer = event.getFloatBuffer();
         int maxIndex = findFirstMaxIndex(inbuffer);
-        int endIndex = findConsecutiveZeros(inbuffer, maxIndex, 1500);
+        int endIndex = findConsecutiveZeros(inbuffer, maxIndex, 850);
         if (endIndex > maxIndex){
             event.setFloatBuffer(Arrays.copyOfRange(inbuffer, 0, endIndex));
         }
@@ -337,7 +368,7 @@ public class AudioUtils {
     public static void trimDecay(AudioEvent event) {
         float[] inbuffer = event.getFloatBuffer();
         int maxIndex = findFirstMaxIndex(inbuffer);
-        int endIndex = findChunkIndex(inbuffer, maxIndex, 250);
+        int endIndex = findChunkIndex(inbuffer, maxIndex, 275);
         if (endIndex > maxIndex){
             event.setFloatBuffer(Arrays.copyOfRange(inbuffer, 0, endIndex));
         }
@@ -388,7 +419,7 @@ public class AudioUtils {
         reverseIR(event);
         trimSilence(event);
         trimDecay(event);
-        //adjustDecay(event);
+        adjustDecay(event);
     }
 
     /**
@@ -472,7 +503,7 @@ public class AudioUtils {
             // Check the condition: max of current chunk < mean of previous chunk
             if (chunkMax < previousChunkMean || (chunkMax == 0.0f && previousChunkMean == 0.0f)) {
                 consecutiveCount++;
-                if (consecutiveCount == 6) {
+                if (consecutiveCount == 4) {
                     return chunkEnd - 1; // Return the final index of the current chunk
                 }
             } else {
