@@ -1,4 +1,4 @@
-package net.fg83.rdcompanion;
+package net.fg83.rdrgen;
 
 public enum SurfaceType {
     FLAT,

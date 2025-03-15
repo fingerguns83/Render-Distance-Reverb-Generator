@@ -1,4 +1,4 @@
-package net.fg83.rdcompanion;
+package net.fg83.rdrgen;
 
 /**
  * The AbsorptionCoefficient class represents the relationship between a specific frequency band

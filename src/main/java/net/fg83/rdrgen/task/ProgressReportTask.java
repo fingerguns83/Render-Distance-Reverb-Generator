@@ -1,6 +1,6 @@
-package net.fg83.rdcompanion.task;
+package net.fg83.rdrgen.task;
 
-import net.fg83.rdcompanion.client.RDRCompanionClient;
+import net.fg83.rdrgen.client.RDRGClient;
 import net.minecraft.client.MinecraftClient;
 
 /**
@@ -22,9 +22,9 @@ import net.minecraft.client.MinecraftClient;
 public class ProgressReportTask implements Runnable{
 
     MinecraftClient client;
-    RDRCompanionClient companionClient;
+    RDRGClient companionClient;
 
-    public ProgressReportTask(MinecraftClient client, RDRCompanionClient companionClient) {
+    public ProgressReportTask(MinecraftClient client, RDRGClient companionClient) {
         this.client = client;
         this.companionClient = companionClient;
     }
@@ -42,13 +42,13 @@ public class ProgressReportTask implements Runnable{
             }
         }
         while (companionClient.isCastingRays.get()){
-            RDRCompanionClient.reportProgress(client);
+            RDRGClient.reportProgress(client);
             try {
                 Thread.sleep(100);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
         }
-        RDRCompanionClient.reportProgress(client);
+        RDRGClient.reportProgress(client);
     }
 }

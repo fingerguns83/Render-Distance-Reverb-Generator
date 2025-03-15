@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "id": "rdrcompanion",
+  "id": "rdrgen",
   "version": "${version}",
-  "name": "RenderDistanceCompanion",
-  "description": "Use Minecraft to generate impulse responses for the FGLabs \"Render Distance\" reverb pedal.",
+  "name": "RenderDistanceReverbGenerator",
+  "description": "Use Minecraft to generate impulse responses.",
   "authors": [
     "fingerguns83"
   ],
   "contact": {},
-  "license": "All-Rights-Reserved",
-  "icon": "assets/craftverb/icon.png",
+  "license": "GPL-3.0",
+  "icon": "assets/rdrgen/icon.png",
   "environment": "*",
   "entrypoints": {
     "client": [
-      "net.fg83.rdcompanion.client.RDRCompanionClient"
+      "net.fg83.rdrgen.client.RDRGClient"
     ],
     "main": [
-      "net.fg83.rdcompanion.RDRCompanion"
+      "net.fg83.rdrgen.RDRG"
     ]
   },
   "mixins": [
-    "craftverb.mixins.json"
+    "rdrgen.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",

@@ -1,7 +1,7 @@
-package net.fg83.rdcompanion.task;
+package net.fg83.rdrgen.task;
 
-import net.fg83.rdcompanion.Ray;
-import net.fg83.rdcompanion.client.RDRCompanionClient;
+import net.fg83.rdrgen.Ray;
+import net.fg83.rdrgen.client.RDRGClient;
 import net.minecraft.client.MinecraftClient;
 
 /**
@@ -19,10 +19,10 @@ import net.minecraft.client.MinecraftClient;
  */
 public class CastRayTask implements Runnable{
     MinecraftClient client;
-    RDRCompanionClient companionClient;
+    RDRGClient companionClient;
     Ray ray;
 
-    public CastRayTask(Ray ray, MinecraftClient client, RDRCompanionClient companionClient) {
+    public CastRayTask(Ray ray, MinecraftClient client, RDRGClient companionClient) {
         this.ray = ray;
         this.client = client;
         this.companionClient = companionClient;
@@ -42,7 +42,7 @@ public class CastRayTask implements Runnable{
             return;
         }
         ray.trace();
-        RDRCompanionClient.processedRays++;
+        RDRGClient.processedRays++;
         if (ray.didHitTarget()){
             companionClient.tracedRayQueue.add(ray);
         }

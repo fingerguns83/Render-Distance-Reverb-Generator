@@ -1,4 +1,4 @@
-package net.fg83.rdcompanion;
+package net.fg83.rdrgen;
 
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;

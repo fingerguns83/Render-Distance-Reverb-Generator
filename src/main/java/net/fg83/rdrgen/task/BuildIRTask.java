@@ -1,7 +1,7 @@
-package net.fg83.rdcompanion.task;
+package net.fg83.rdrgen.task;
 
-import net.fg83.rdcompanion.Ray;
-import net.fg83.rdcompanion.client.RDRCompanionClient;
+import net.fg83.rdrgen.Ray;
+import net.fg83.rdrgen.client.RDRGClient;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.Formatting;
 
@@ -15,9 +15,9 @@ import net.minecraft.util.Formatting;
  */
 public class BuildIRTask implements Runnable {
     MinecraftClient client;
-    RDRCompanionClient companionClient;
+    RDRGClient companionClient;
 
-    public BuildIRTask(MinecraftClient client, RDRCompanionClient companionClient) {
+    public BuildIRTask(MinecraftClient client, RDRGClient companionClient) {
         this.client = client;
         this.companionClient = companionClient;
     }
@@ -35,10 +35,10 @@ public class BuildIRTask implements Runnable {
             }
         }
         System.out.println("BuildIRTask has proceeded to run.");
-        double percentHit = (float) (Math.round(((float) companionClient.tracedRayQueue.size() / RDRCompanionClient.processedRays) * 10000)) / 100;
-        System.out.println(RDRCompanionClient.processedRays + " rays processed | " + companionClient.tracedRayQueue.size() + " rays hit target (" + percentHit + "%)");
+        double percentHit = (float) (Math.round(((float) companionClient.tracedRayQueue.size() / RDRGClient.processedRays) * 10000)) / 100;
+        System.out.println(RDRGClient.processedRays + " rays processed | " + companionClient.tracedRayQueue.size() + " rays hit target (" + percentHit + "%)");
         if (!companionClient.isCastingRays.compareAndSet(true, false)) {
-            RDRCompanionClient.sendPlayerMessage(client, "Error building waveform. Please try again.", new Formatting[]{Formatting.RED});
+            RDRGClient.sendPlayerMessage(client, "Error building waveform. Please try again.", new Formatting[]{Formatting.RED});
             return;
         }
 

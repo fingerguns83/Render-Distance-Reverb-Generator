@@ -1,4 +1,4 @@
-package net.fg83.rdcompanion.client;
+package net.fg83.rdrgen.client;
 
 import be.tarsos.dsp.AudioEvent;
 import com.google.gson.JsonArray;
@@ -8,10 +8,10 @@ import com.google.gson.JsonParser;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.fg83.rdcompanion.AbsorptionCoefficient;
-import net.fg83.rdcompanion.AudioUtils;
-import net.fg83.rdcompanion.Ray;
-import net.fg83.rdcompanion.task.PopulateRaysTask;
+import net.fg83.rdrgen.AbsorptionCoefficient;
+import net.fg83.rdrgen.AudioUtils;
+import net.fg83.rdrgen.Ray;
+import net.fg83.rdrgen.task.PopulateRaysTask;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -59,7 +59,7 @@ import java.time.format.DateTimeFormatter;
  * - `isCastingRays`: Tracks whether ray casting is currently in progress.
  * - `isGeneratingIR`: Tracks whether impulse response generation is currently in progress.
  */
-public class RDRCompanionClient implements ClientModInitializer {
+public class RDRGClient implements ClientModInitializer {
 
     public static final Map<String, List<AbsorptionCoefficient>> absorptionCoefficients = new HashMap<>();
     public static final Map<String, String> blockCoefficientKeys = new HashMap<>();
@@ -222,7 +222,7 @@ public class RDRCompanionClient implements ClientModInitializer {
 
         String filename = "IR_" + name + "_" + timestamp + ".wav";
         
-        AudioUtils.writeWavFile("VerbCrafter" + File.separator + filename, combinedIR);
+        AudioUtils.writeWavFile("RDR-Companion" + File.separator + filename, combinedIR);
 
         assert client.player != null;
         client.player.playSoundToPlayer(SoundEvent.of(Identifier.of("minecraft", "block.amethyst_block.chime")), SoundCategory.PLAYERS, 2.0F, 0.8F);

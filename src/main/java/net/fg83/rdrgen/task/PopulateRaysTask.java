@@ -1,8 +1,8 @@
-package net.fg83.rdcompanion.task;
+package net.fg83.rdrgen.task;
 
-import net.fg83.rdcompanion.Ray;
-import net.fg83.rdcompanion.VectorUtils;
-import net.fg83.rdcompanion.client.RDRCompanionClient;
+import net.fg83.rdrgen.Ray;
+import net.fg83.rdrgen.VectorUtils;
+import net.fg83.rdrgen.client.RDRGClient;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.Formatting;
@@ -16,12 +16,12 @@ import net.minecraft.util.math.Vec3d;
 public class PopulateRaysTask implements Runnable{
 
     MinecraftClient client;
-    RDRCompanionClient companionClient;
+    RDRGClient companionClient;
 
     Entity transmitter;
     Entity receiver;
 
-    public PopulateRaysTask(Entity transmitter, Entity receiver, MinecraftClient client, RDRCompanionClient companionClient) {
+    public PopulateRaysTask(Entity transmitter, Entity receiver, MinecraftClient client, RDRGClient companionClient) {
         this.transmitter = transmitter;
         this.receiver = receiver;
         this.client = client;
@@ -44,8 +44,8 @@ public class PopulateRaysTask implements Runnable{
         progressReportThread.start();
 
         try {
-            RDRCompanionClient.sendPlayerMessage(client, "Running acoustic simulation...", new Formatting[]{Formatting.GOLD, Formatting.BOLD});
-            RDRCompanionClient.sendPlayerMessage(client, "(Grab some coffee, this is going to take a while.)", new Formatting[]{Formatting.GRAY, Formatting.ITALIC});
+            RDRGClient.sendPlayerMessage(client, "Running acoustic simulation...", new Formatting[]{Formatting.GOLD, Formatting.BOLD});
+            RDRGClient.sendPlayerMessage(client, "(Grab some coffee, this is going to take a while.)", new Formatting[]{Formatting.GRAY, Formatting.ITALIC});
 
             for (float pitch = -90.0F; pitch <= 90.0F; pitch += 0.1F) {
                 int numYawRays = (int) Math.round(VectorUtils.getScaledRaysForPitch(90 - Math.abs(pitch)));
@@ -53,7 +53,7 @@ public class PopulateRaysTask implements Runnable{
                 for (int yawRays = 0; yawRays < numYawRays; yawRays++) {
                     float yaw = ((((float) yawRays * 360.0F) / (float) numYawRays) / 10) - 180.0F;
                     Vec3d currentDir = receiver.getRotationVector(pitch, yaw);
-                    RDRCompanionClient.raysSubmitted++;
+                    RDRGClient.raysSubmitted++;
                     companionClient.rayPool.submit(new CastRayTask(new Ray(startPos, currentDir, receiver, transmitter), client, companionClient));
                 }
                 try {

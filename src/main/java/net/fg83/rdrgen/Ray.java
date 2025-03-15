@@ -1,6 +1,6 @@
-package net.fg83.rdcompanion;
+package net.fg83.rdrgen;
 
-import net.fg83.rdcompanion.client.RDRCompanionClient;
+import net.fg83.rdrgen.client.RDRGClient;
 import net.minecraft.block.BlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.hit.BlockHitResult;
@@ -38,14 +38,14 @@ public class Ray {
     private final Entity castingEntity;
     private final Entity targetEntity;
     private boolean hasHitTarget = false;
-    private final Map<Integer, Double> energy;  // Map frequency (Hz) to energy
+    private final Map<Integer, Double> energy;  // Map frequency to energy
     private double totalTraveledDistance = 0;  // Total distance the ray has traveled
 
-    // Constants for frequency bands
+    // Constants
     public static final int[] FREQUENCY_BANDS = {125, 250, 500, 1000, 2000, 4000};
     public static final int DEFAULT_MAX_DISTANCE = 1700;
 
-    // Constructor to initialize ray with energy values for each frequency band
+
     public Ray(Vec3d position, Vec3d direction, Entity castingEntity, Entity targetEntity) {
         this.currentPosition = position;
         this.currentDirection = direction;
@@ -223,7 +223,7 @@ public class Ray {
      */
     private String fetchCoefficientKey(String blockNameRaw){
         String blockName = blockNameRaw.replace("Block{", "").replace("}", "");
-        return RDRCompanionClient.blockCoefficientKeys.get(blockName);
+        return RDRGClient.blockCoefficientKeys.get(blockName);
     }
 
     /**
@@ -236,7 +236,7 @@ public class Ray {
      *         or null if the key does not exist in the mapping.
      */
     private List<AbsorptionCoefficient> getAbsorptionCoefficients(String key){
-        return RDRCompanionClient.absorptionCoefficients.getOrDefault(key, null);
+        return RDRGClient.absorptionCoefficients.getOrDefault(key, null);
     }
 
     /**

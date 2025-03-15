@@ -1,4 +1,4 @@
-package net.fg83.rdcompanion;
+package net.fg83.rdrgen;
 
 import be.tarsos.dsp.AudioEvent;
 import be.tarsos.dsp.filters.BandPass;
