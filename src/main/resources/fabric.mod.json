@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "rdrgen",
   "version": "${version}",
-  "name": "RenderDistanceReverbGenerator",
+  "name": "RenderDistance Reverb Generator",
   "description": "Use Minecraft to generate impulse responses.",
   "authors": [
     "fingerguns83"

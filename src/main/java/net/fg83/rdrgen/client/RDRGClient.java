@@ -222,7 +222,7 @@ public class RDRGClient implements ClientModInitializer {
 
         String filename = "IR_" + name + "_" + timestamp + ".wav";
         
-        AudioUtils.writeWavFile("RDR-Companion" + File.separator + filename, combinedIR);
+        AudioUtils.writeWavFile("RenderDistance-Reverb-Generator" + File.separator + filename, combinedIR);
 
         assert client.player != null;
         client.player.playSoundToPlayer(SoundEvent.of(Identifier.of("minecraft", "block.amethyst_block.chime")), SoundCategory.PLAYERS, 2.0F, 0.8F);
